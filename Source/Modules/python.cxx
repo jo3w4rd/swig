@@ -18,9 +18,12 @@ char cvsroot_python_cxx[] = "$Id$";
 
 static int treduce = SWIG_cparse_template_reduce(0);
 
+#include <iostream>
+
 #include <ctype.h>
 #include <sstream>
 #include "../DoxygenTranslator/src/PyDocConverter.h"
+#include "../DoxygenTranslator/src/PyDocCopier.h"
 
 #define PYSHADOW_MEMBER  0x2
 #define WARN_PYTHON_MULTIPLE_INH 405
@@ -554,8 +557,10 @@ public:
       Preprocessor_define((DOH *) "SWIG_CPLUSPLUS_CAST", 0);
     }
     
-    if (doxygen)
-      doxygenTranslator = new PyDocConverter(debug_doxygen_translator, debug_doxygen_parser);
+    if (doxygen) {
+        doxygenTranslator = new PyDocCopier(debug_doxygen_translator, debug_doxygen_parser);
+        //doxygenTranslator = new PyDocConverter(debug_doxygen_translator, debug_doxygen_parser);
+    }
 
     if (!global_name)
       global_name = NewString("cvar");
@@ -1138,33 +1143,35 @@ public:
 
     for (si = First(clist); si.item; si = Next(si)) {
       s = si.item;
+
       if (Len(s)) {
-	char *c = Char(s);
-	while (*c) {
-	  if (!isspace(*c))
-	    break;
-	  initial++;
-	  c++;
-	}
-	if (*c && !isspace(*c)) {
-	  break;
-	} else {
-	  initial = 0;
-	}
-      }
+          char *c = Char(s);
+          while (*c) {
+              if (!isspace(*c))
+                  break;
+              initial++;
+              c++;
+          }
+          if (*c && !isspace(*c)) {
+              break;
+          } else {
+              initial = 0;
+          }
+        }
     }
     while (si.item) {
       s = si.item;
       if (Len(s) > initial) {
-	char *c = Char(s);
-	c += initial;
-	Printv(out, indent, c, "\n", NIL);
+          char *c = Char(s);
+          //c += initial;
+          Printv(out, indent, c, "\n", NIL);
       } else {
-	Printv(out, "\n", NIL);
+          Printv(out, "\n", NIL);
       }
       si = Next(si);
     }
     Delete(clist);
+
     return out;
   }
 
@@ -1266,15 +1273,18 @@ public:
     // Python will no load the module with such comment because of illegal
     // escape '\x'. '\' may additionally appear in verbatim or htmlonly sections
     // of doxygen doc, Latex expressions, ...
-    if (have_auto && have_ds) {	// Both autodoc and docstring are present
+      if (have_auto && have_doxygen) {	// Both autodoc and doxygen are present
+          doc = NewString("");
+          Printv(doc, triple_double, "\n", pythoncode(autodoc, indent), "\n", pythoncode(doxygen_comment, indent), indent, triple_double, NIL);
+      } else if (have_auto && have_ds) {	// Both autodoc and docstring are present
       doc = NewString("");
-      Printv(doc, "r", triple_double, "\n", pythoncode(autodoc, indent), "\n", pythoncode(str, indent), indent, triple_double, NIL);
+      Printv(doc, triple_double, "\n", pythoncode(autodoc, indent), "\n", pythoncode(str, indent), indent, triple_double, NIL);
     } else if (!have_auto && have_ds) {	// only docstring
       if (Strchr(str, '\n') == 0) {
 	doc = NewStringf("%s%s%s", triple_double, str, triple_double);
       } else {
 	doc = NewString("");
-	Printv(doc, "r", triple_double, "\n", pythoncode(str, indent), indent, triple_double, NIL);
+	Printv(doc, triple_double, "\n", pythoncode(str, indent), indent, triple_double, NIL);
       }
     } else if (have_auto && !have_ds) {	// only autodoc
       if (Strchr(autodoc, '\n') == 0) {
@@ -1285,7 +1295,7 @@ public:
       }
     } else if (have_doxygen) { // the lowest priority
       doc = NewString("");
-      Printv(doc, "r", triple_double, "\n", pythoncode(doxygen_comment, indent), indent, triple_double, NIL);
+      Printv(doc, triple_double, "\n", pythoncode(doxygen_comment, indent), indent, triple_double, NIL);
     }
     else
       doc = NewString("");
@@ -1294,6 +1304,7 @@ public:
     // by post processing tools
     Setattr(n, "python:docstring", doc);
     Setattr(n, "python:autodoc", autodoc);
+
     return doc;
   }   
 
@@ -1517,9 +1528,9 @@ public:
 	    String *str = Getattr(n, "feature:docstring");
 	    if (!str || Len(str) == 0) {
 	      if (CPlusPlus) {
-		Printf(doc, "Proxy of C++ %s class", real_classname);
+		//Printf(doc, "Proxy of C++ %s class", real_classname);
 	      } else {
-		Printf(doc, "Proxy of C %s struct", real_classname);
+		//Printf(doc, "Proxy of C %s struct", real_classname);
 	      }
 	    }
 	  }

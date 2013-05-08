@@ -17,6 +17,8 @@
 #include <iostream>
 #include <algorithm>
 #include <vector>
+#include <iterator> // for ostream_iterator
+using namespace std;
 
 using std::string;
 using std::cout;
@@ -77,7 +79,7 @@ void DoxygenParser::fillTables()
     doxygenCommands[commandErrorThrowings[i]] = COMMANDERRORTHROW;
 
   for (int i = 0; i < commandUniquesSize; i++)
-    doxygenCommands[commandUniques[i]] = COMMANDUNIQUE;
+      doxygenCommands[commandUniques[i]] = COMMANDUNIQUE;
 
   for (int i = 0; i < commandHtmlSize; i++)
     doxygenCommands[commandHtml[i]] = COMMAND_HTML;
@@ -791,6 +793,21 @@ int DoxygenParser::addCommandUnique(const std::string &theCommand,
       aNewList.push_back(DoxygenEntity("plainstd::string", size));
     doxyList.push_back(DoxygenEntity(theCommand, aNewList));
   }
+    // \include <file> 
+  else if (theCommand == "include") {
+      if (noisy)
+          cout << "Parsing " << theCommand << endl;
+      std::string file = getNextWord();
+      if (file.empty()) {
+          printListError(WARN_DOXYGEN_COMMAND_ERROR,
+                         "No name followed " + theCommand + " command. Not added");
+          return 0;
+      }
+
+      DoxygenEntityList aNewList;
+      aNewList.push_back(DoxygenEntity("plainstd::string", file));
+      doxyList.push_back(DoxygenEntity(theCommand, aNewList));
+  }
   // \addtogroup <name> [(title)]
   else if (theCommand == "addtogroup") {
     if (noisy)
@@ -874,7 +891,7 @@ int DoxygenParser::addCommand(const std::string &commandString,
                               const TokenList &tokList,
                               DoxygenEntityList &doxyList)
 {
-
+ 
   string theCommand = stringToLower(commandString);
 
   if (theCommand == "plainstd::string") {

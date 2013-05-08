@@ -18,6 +18,7 @@ char cvsroot_java_cxx[] = "$Id$";
 #include "cparse.h"
 #include <ctype.h>
 #include "../DoxygenTranslator/src/JavaDocConverter.h"
+#include "../DoxygenTranslator/src/CommentPassThrough.h"
 
 /* Hash type used for upcalls from C/C++ */
 typedef DOH UpcallData;
@@ -298,7 +299,8 @@ public:
     }
     
     if (doxygen)
-      doxygenTranslator = new JavaDocConverter(debug_doxygen_translator, debug_doxygen_parser);
+      //doxygenTranslator = new JavaDocConverter(debug_doxygen_translator, debug_doxygen_parser);
+      doxygenTranslator = new CommentPassThrough(debug_doxygen_translator, debug_doxygen_parser);
 
     // Add a symbol to the parser for conditional compilation
     Preprocessor_define("SWIGJAVA 1", 0);
