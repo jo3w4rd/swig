@@ -4343,12 +4343,56 @@ public:
     return SWIG_OK;
   }
 
+    /* -------------------
+     * findDocInParent()
+     *
+     * Search up two levels
+     * ------------------- */
+    String *findDocInGrandParent(Node *n, String *name) {
+        //Node *grandParent = Getattr(Getattr(n,"parentNode"),"parentNode");
+        //Node *grandParent = Getattr(n,"parentNode");
+        //String *grandParentName = Getattr(grandParent, "name");
+        std::cout << "Start Node; looking for: " << Char(name) << std::endl;
+        Swig_print_node(n);
+        std::cout << "End Node" << std::endl;
+
+        //std::cout << "Checking for " << Char(name) << " under Parent " << Char(grandParentName) << std::endl;
+        //String *searchname = name;
+        //if (Strcmp(Getattr(n,"storage"),"static") == 0) {
+        //    searchname = Getattr(n,"staticmembervariableHandler:name");
+        //}
+        //try {
+        //    Node *parent = firstChild(grandParent);
+        //    while (parent) {
+        //        std::cout << "Checking " << Char(Getattr(parent,"name")) << std::endl;
+        //        if (Strcmp(searchname, Getattr(parent,"name")) == 0) {
+        //            if (Getattr(parent,"doxygen")) {
+        //                return Getattr(parent,"doxygen");
+        //            }
+        //        }
+        //        parent = nextSibling(parent);
+        //    }
+        //} catch (int e) {
+        //    std::cout << "Exception number: " << e << std::endl;
+        //}
+        return 0;
+    }
+
   /* ------------------------------------------------------------
    * membervariableHandler()
    * ------------------------------------------------------------ */
 
   virtual int membervariableHandler(Node *n) {
     String *symname = Getattr(n, "sym:name");
+
+      std::cout << "MemVar: " << Char(Getattr(n,"name")) << std::endl;
+      String *docfuncname = Getattr(n,"name");
+      //String *foundDocs = findDocInGrandParent(n, docfuncname);
+      //std::cout << "Found: " << Char(foundDocs) << std::endl;
+
+      std::cout << "Start Node; looking for: " << Char(docfuncname) << std::endl;
+      Swig_print_node(n);
+      std::cout << "End Node" << std::endl;
 
     int oldshadow = shadow;
     if (shadow)
@@ -4391,6 +4435,7 @@ public:
     Language::staticmembervariableHandler(n);
     Swig_restore(n);
 
+ 
     if (GetFlag(n, "wrappedasconstant"))
       return SWIG_OK;
 
