@@ -88,6 +88,7 @@ void JavaDocConverter::fillStaticTables()
   tagHandlers["::"] = make_pair(&JavaDocConverter::handleTagChar, "");
   // these commands are stripped out
   tagHandlers["attention"] = make_pair(&JavaDocConverter::handleParagraph, "");
+  tagHandlers["anchor"] = make_pair(&JavaDocConverter::handleTagAnchor, "");
   tagHandlers["brief"] = make_pair(&JavaDocConverter::handleParagraph, "");
   tagHandlers["bug"] = make_pair(&JavaDocConverter::handleParagraph, "");
   tagHandlers["date"] = make_pair(&JavaDocConverter::handleParagraph, "");
@@ -112,6 +113,7 @@ void JavaDocConverter::fillStaticTables()
   tagHandlers["package"] = make_pair(&JavaDocConverter::handleTagSame, "");
   tagHandlers["param"] = make_pair(&JavaDocConverter::handleTagParam, "");
   tagHandlers["tparam"] = make_pair(&JavaDocConverter::handleTagParam, "");
+  tagHandlers["ref"] = make_pair(&JavaDocConverter::handleTagRef, "");
   tagHandlers["result"] = make_pair(&JavaDocConverter::handleTagSame, "return");
   tagHandlers["return"] = make_pair(&JavaDocConverter::handleTagSame, "");
   tagHandlers["returns"] = make_pair(&JavaDocConverter::handleTagSame,
@@ -402,6 +404,15 @@ void JavaDocConverter::translateEntity(DoxygenEntity &tag,
   }
 }
 
+
+void JavaDocConverter::handleTagAnchor(DoxygenEntity& tag,
+                                       std::string& translatedComment,
+                                       std::string &)
+{
+  translatedComment += "<a id=\"" + translateSubtree(tag) + "\"></a>";
+}
+
+
 void JavaDocConverter::handleTagHtml(DoxygenEntity& tag,
                                      std::string& translatedComment,
                                      std::string &arg)
@@ -444,7 +455,15 @@ void JavaDocConverter::handleNewLine(DoxygenEntity&,
                                      std::string& translatedComment,
                                      std::string&)
 {
-  translatedComment += "\n * ";
+  // <br> tag is added, because otherwise to much text is joined
+  // into same paragraph by javadoc. For example, doxy list:
+  // - item one
+  // - item two
+  // becomes one paragraph with surrounding text without newlines.
+  // This way we get to many empty lines in javadoc output, but this
+  // is still better than joined lines. Possibility for improvements
+  // exists.
+  translatedComment += "<br>\n * ";
 }
 
 void JavaDocConverter::handleTagChar(DoxygenEntity& tag,
@@ -573,6 +592,7 @@ void JavaDocConverter::handleTagPar(DoxygenEntity& tag,
   translatedComment += "</p>";
 }
 
+
 void JavaDocConverter::handleTagParam(DoxygenEntity& tag,
                                       std::string& translatedComment,
                                       std::string&)
@@ -590,6 +610,28 @@ void JavaDocConverter::handleTagParam(DoxygenEntity& tag,
   handleParagraph(tag, translatedComment, dummy);
 }
 
+
+void JavaDocConverter::handleTagRef(DoxygenEntity& tag,
+                                    std::string& translatedComment,
+                                    std::string&)
+{
+  std::string dummy;
+  if (!tag.entityList.size())
+    return;
+
+  // we translate to link, although \page is not supported in Java, but 
+  // reader at least knows what to look at. Also for \anchor tag on the same
+  // page this link works.
+  string anchor = tag.entityList.begin()->data;
+  tag.entityList.pop_front();
+  string anchorText = anchor;
+  if (!tag.entityList.empty()) {
+    anchorText = tag.entityList.begin()->data;
+  }
+  translatedComment += "<a href=\"#" + anchor + "\">" + anchorText + "</a>";
+}
+
+
 string JavaDocConverter::convertLink(string linkObject)
 {
   if (GetFlag(currentNode, "feature:doxygen:nolinktranslate"))
@@ -604,6 +646,7 @@ string JavaDocConverter::convertLink(string linkObject)
   string paramsStr = linkObject.substr(lbracePos + 1,
       rbracePos - lbracePos - 1);
   // strip the params, to fill them later
+  string additionalObject = linkObject.substr(rbracePos + 1, string::npos);
   linkObject = linkObject.substr(0, lbracePos);
 
   // find all the params
@@ -678,7 +721,7 @@ string JavaDocConverter::convertLink(string linkObject)
   }
   linkObject += ")";
 
-  return linkObject;
+  return linkObject + additionalObject;
 }
 
 void JavaDocConverter::handleTagLink(DoxygenEntity& tag,

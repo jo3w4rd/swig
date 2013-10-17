@@ -27,7 +27,8 @@ public class doxygen_translate_all_tags_runme {
     HashMap<String, String> wantedComments = new HashMap<String, String>();
     
     wantedComments.put("doxygen_translate_all_tags.doxygen_translate_all_tags.func01(int)",
-    		" <i>Hello </i>\n\n\n\n\n\n" +
+    		" <i>Hello </i>\n\n\n" +
+                " <a id=\"theAnchor\"></a>\n\n\n" +
     		" <li>some list item</li>\n\n" +
     		" This is attention!\n" +
     		" You were warned!\n" +
@@ -111,11 +112,16 @@ public class doxygen_translate_all_tags_runme {
                 " @param a the first param\n");
     
     wantedComments.put("doxygen_translate_all_tags.doxygen_translate_all_tags.func08(int)",
-    		" Remarks: Some remark text \n" +
-    		" Remarks: Another remarks section \n" +
-    		" @return Whatever \n" +
-    		" @return it \n" +
-    		" @return may return \n");
+                       "<a id=\"someAnchor\"></a>\n" +
+                       "Text after anchor.\n" + 
+                       "<a href=\"#someAnchor\">Anchor description</a>\n" +
+                       "<a href=\"#someAnchor\">someAnchor</a> not quoted text is not part of ref tag\n" +
+                       "<a href=\"#someAnchor\">someAnchor</a>\n" +
+                       " Remarks: Some remark text \n" +
+                       " Remarks: Another remarks section \n" +
+                       " @return Whatever \n" +
+                       " @return it \n" +
+                       " @return may return \n");
     
     wantedComments.put("doxygen_translate_all_tags.doxygen_translate_all_tags.func09(int)",
                        " This will only appear in RTF \n" +

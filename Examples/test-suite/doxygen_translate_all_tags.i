@@ -269,11 +269,17 @@ int func07(int a)
  *
  * \protectedsection
  *
+ * \anchor someAnchor
+ * Text after anchor.
  * \protocol someProtocol header.h "Header name"
  *
  * \public
  *
  * \publicsection
+ *
+ * \ref someAnchor "Anchor description"
+ *
+ * \ref someAnchor not quoted text is not part of ref tag
  *
  * \ref someAnchor
  *
