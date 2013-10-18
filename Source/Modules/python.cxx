@@ -47,6 +47,7 @@ static File *f_directors_h = 0;
 static File *f_init = 0;
 static File *f_shadow_py = 0;
 static String *f_shadow = 0;
+static String *f_shadow_begin = 0;
 static Hash *f_shadow_imports = 0;
 static String *f_shadow_builtin_imports = 0;
 static String *f_shadow_stubs = 0;
@@ -811,6 +812,7 @@ public:
       filen = NULL;
 
       f_shadow = NewString("");
+      f_shadow_begin = NewString("");
       f_shadow_imports = NewHash();
       f_shadow_builtin_imports = NewString("");
       f_shadow_stubs = NewString("");
@@ -1004,6 +1006,7 @@ public:
       if (!modern) {
 	Printv(f_shadow, "# This file is compatible with both classic and new-style classes.\n", NIL);
       }
+      Printv(f_shadow_py, "\n", f_shadow_begin, "\n", NIL);
       Printv(f_shadow_py, "\n", f_shadow_builtin_imports, "\n", NIL);
       Printv(f_shadow_py, f_shadow, "\n", NIL);
       Printv(f_shadow_py, f_shadow_stubs, "\n", NIL);
@@ -1615,7 +1618,7 @@ public:
 	return NewString("True");
       if (Strcmp(v, "false") == 0 || Strcmp(v, "FALSE") == 0)
 	return NewString("False");
-      if (Strcmp(v, "NULL") == 0)
+      if (Strcmp(v, "NULL") == 0 || Strcmp(v, "nullptr") == 0)
 	return SwigType_ispointer(t) ? NewString("None") : NewString("0");
     }
     return 0;
@@ -2669,7 +2672,7 @@ public:
 	Printf(f->code, "}\n");
       } else {
 	Printf(f->code, "newargs = PyTuple_GetSlice(args,0,%d);\n", num_fixed_arguments);
-	Printf(f->code, "varargs = PyTuple_GetSlice(args,%d,PyTuple_Size(args)+1);\n", num_fixed_arguments);
+	Printf(f->code, "varargs = PyTuple_GetSlice(args,%d,PyTuple_Size(args));\n", num_fixed_arguments);
       }
       Printf(f->code, "resultobj = %s__varargs__(%s,newargs,varargs);\n", wname, builtin ? "self" : "NULL");
       Append(f->code, "Py_XDECREF(newargs);\n");
@@ -3453,7 +3456,7 @@ public:
     printSlot(f, getSlot(n, "feature:python:tp_dict"), "tp_dict");
     printSlot(f, getSlot(n, "feature:python:tp_descr_get"), "tp_descr_get", "descrgetfunc");
     printSlot(f, getSlot(n, "feature:python:tp_descr_set"), "tp_descr_set", "descrsetfunc");
-    Printf(f, "    (size_t)(((char*)&((SwigPyObject *) 64L)->dict) - (char*) 64L), /* tp_dictoffset */\n");
+    Printf(f, "    (Py_ssize_t)offsetof(SwigPyObject, dict), /* tp_dictoffset */\n");
     printSlot(f, tp_init, "tp_init", "initproc");
     printSlot(f, getSlot(n, "feature:python:tp_alloc"), "tp_alloc", "allocfunc");
     printSlot(f, "0", "tp_new", "newfunc");
@@ -3782,7 +3785,7 @@ public:
     if (builtin)
       builtin_pre_decl(n);
 
-    /* Overide the shadow file so we can capture its methods */
+    /* Override the shadow file so we can capture its methods */
     f_shadow = NewString("");
 
     // Set up type check for director class constructor
@@ -4554,12 +4557,16 @@ public:
     String *code = Getattr(n, "code");
     String *section = Getattr(n, "section");
 
-    if ((!ImportMode) && ((Cmp(section, "python") == 0) || (Cmp(section, "shadow") == 0))) {
+    if (!ImportMode && (Cmp(section, "python") == 0 || Cmp(section, "shadow") == 0)) {
       if (shadow) {
 	String *pycode = pythoncode(code, shadow_indent);
 	Printv(f_shadow, pycode, NIL);
 	Delete(pycode);
       }
+    } else if (!ImportMode && (Cmp(section, "pythonbegin") == 0)) {
+      String *pycode = pythoncode(code, "");
+      Printv(f_shadow_begin, pycode, NIL);
+      Delete(pycode);
     } else {
       Language::insertDirective(n);
     }
@@ -4827,7 +4834,7 @@ int PYTHON::classDirectorMethod(Node *n, Node *parent, String *super) {
 	  /* if necessary, cast away const since Python doesn't support it! */
 	  if (SwigType_isconst(nptype)) {
 	    nonconst = NewStringf("nc_tmp_%s", pname);
-	    String *nonconst_i = NewStringf("= const_cast<%s>(%s)", SwigType_lstr(ptype, 0), ppname);
+	    String *nonconst_i = NewStringf("= const_cast< %s >(%s)", SwigType_lstr(ptype, 0), ppname);
 	    Wrapper_add_localv(w, nonconst, SwigType_lstr(ptype, 0), nonconst, nonconst_i, NIL);
 	    Delete(nonconst_i);
 	    Swig_warning(WARN_LANG_DISCARD_CONST, input_file, line_number,
