@@ -16,7 +16,12 @@
 
 static int treduce = SWIG_cparse_template_reduce(0);
 
+#include <iostream>
+
 #include <ctype.h>
+#include <sstream>
+#include "../DoxygenTranslator/src/PyDocConverter.h"
+#include "../DoxygenTranslator/src/PyDocCopier.h"
 
 #define PYSHADOW_MEMBER  0x2
 #define WARN_PYTHON_MULTIPLE_INH 405
@@ -42,6 +47,7 @@ static File *f_directors_h = 0;
 static File *f_init = 0;
 static File *f_shadow_py = 0;
 static String *f_shadow = 0;
+static String *f_shadow_begin = 0;
 static Hash *f_shadow_imports = 0;
 static String *f_shadow_builtin_imports = 0;
 static String *f_shadow_stubs = 0;
@@ -81,6 +87,7 @@ static int buildnone = 0;
 static int nobuildnone = 0;
 static int safecstrings = 0;
 static int dirvtable = 0;
+static int doxygen = 0;
 static int proxydel = 1;
 static int fastunpack = 0;
 static int fastproxy = 0;
@@ -115,6 +122,9 @@ Python Options (available with -python)\n\
      -classptr       - Generate shadow 'ClassPtr' as in older swig versions\n\
      -cppcast        - Enable C++ casting operators (default) \n\
      -dirvtable      - Generate a pseudo virtual table for directors for faster dispatch \n\
+     -doxygen        - Convert C++ doxygen comments to pydoc comments in proxy classes \n\
+     -debug-doxygen-parser     - Display doxygen parser module debugging information\n\
+     -debug-doxygen-translator - Display doxygen translator module debugging information\n\
      -extranative    - Return extra native C++ wraps for std containers when possible \n\
      -fastinit       - Use fast init mechanism for classes (default)\n\
      -fastunpack     - Use fast unpack mechanism to parse the argument functions \n\
@@ -325,6 +335,9 @@ public:
 
     SWIG_library_directory("python");
 
+    bool debug_doxygen_parser = false;
+    bool debug_doxygen_translator = false;
+
     for (int i = 1; i < argc; i++) {
       if (argv[i]) {
 	if (strcmp(argv[i], "-interface") == 0) {
@@ -415,6 +428,16 @@ public:
 	} else if (strcmp(argv[i], "-nodirvtable") == 0) {
 	  dirvtable = 0;
 	  Swig_mark_arg(i);
+	} else if (strcmp(argv[i], "-doxygen") == 0) {
+	  doxygen = 1;
+	  scan_doxygen_comments = 1;
+	  Swig_mark_arg(i);
+  } else if (strcmp(argv[i], "-debug-doxygen-translator") == 0) {
+    debug_doxygen_translator = true;
+    Swig_mark_arg(i);
+  } else if (strcmp(argv[i], "-debug-doxygen-parser") == 0) {
+    debug_doxygen_parser = true;
+    Swig_mark_arg(i);
 	} else if (strcmp(argv[i], "-fastunpack") == 0) {
 	  fastunpack = 1;
 	  Swig_mark_arg(i);
@@ -531,6 +554,11 @@ public:
 
     if (cppcast) {
       Preprocessor_define((DOH *) "SWIG_CPLUSPLUS_CAST", 0);
+    }
+    
+    if (doxygen) {
+        doxygenTranslator = new PyDocCopier(debug_doxygen_translator, debug_doxygen_parser);
+        //doxygenTranslator = new PyDocConverter(debug_doxygen_translator, debug_doxygen_parser);
     }
 
     if (!global_name)
@@ -784,6 +812,7 @@ public:
       filen = NULL;
 
       f_shadow = NewString("");
+      f_shadow_begin = NewString("");
       f_shadow_imports = NewHash();
       f_shadow_builtin_imports = NewString("");
       f_shadow_stubs = NewString("");
@@ -977,6 +1006,7 @@ public:
       if (!modern) {
 	Printv(f_shadow, "# This file is compatible with both classic and new-style classes.\n", NIL);
       }
+      Printv(f_shadow_py, "\n", f_shadow_begin, "\n", NIL);
       Printv(f_shadow_py, "\n", f_shadow_builtin_imports, "\n", NIL);
       Printv(f_shadow_py, f_shadow, "\n", NIL);
       Printv(f_shadow_py, f_shadow_stubs, "\n", NIL);
@@ -1114,33 +1144,35 @@ public:
 
     for (si = First(clist); si.item; si = Next(si)) {
       s = si.item;
+
       if (Len(s)) {
-	char *c = Char(s);
-	while (*c) {
-	  if (!isspace(*c))
-	    break;
-	  initial++;
-	  c++;
-	}
-	if (*c && !isspace(*c)) {
-	  break;
-	} else {
-	  initial = 0;
-	}
-      }
+          char *c = Char(s);
+          while (*c) {
+              if (!isspace(*c))
+                  break;
+              initial++;
+              c++;
+          }
+          if (*c && !isspace(*c)) {
+              break;
+          } else {
+              initial = 0;
+          }
+        }
     }
     while (si.item) {
       s = si.item;
       if (Len(s) > initial) {
-	char *c = Char(s);
-	c += initial;
-	Printv(out, indent, c, "\n", NIL);
+          char *c = Char(s);
+          //c += initial;
+          Printv(out, indent, c, "\n", NIL);
       } else {
-	Printv(out, "\n", NIL);
+          Printv(out, "\n", NIL);
       }
       si = Next(si);
     }
     Delete(clist);
+
     return out;
   }
 
@@ -1185,7 +1217,10 @@ public:
 
   bool have_docstring(Node *n) {
     String *str = Getattr(n, "feature:docstring");
-    return (str && Len(str) > 0) || (Getattr(n, "feature:autodoc") && !GetFlag(n, "feature:noautodoc"));
+    return ((str && Len(str) > 0)
+	|| (Getattr(n, "feature:autodoc") && !GetFlag(n, "feature:noautodoc"))
+	|| (doxygen && doxygenTranslator->hasDocumentation(n))
+      );
   }
 
   /* ------------------------------------------------------------
@@ -1197,8 +1232,10 @@ public:
 
   String *docstring(Node *n, autodoc_t ad_type, const String *indent, bool use_triple = true) {
     String *str = Getattr(n, "feature:docstring");
+    String *doxygen_comment = 0;
     bool have_ds = (str && Len(str) > 0);
     bool have_auto = (Getattr(n, "feature:autodoc") && !GetFlag(n, "feature:noautodoc"));
+    bool have_doxygen = doxygen && doxygenTranslator->hasDocumentation(n);
     const char *triple_double = use_triple ? "\"\"\"" : "";
     String *autodoc = NULL;
     String *doc = NULL;
@@ -1215,6 +1252,10 @@ public:
       autodoc = make_autodoc(n, ad_type);
       have_auto = (autodoc && Len(autodoc) > 0);
     }
+    if (have_doxygen) {
+      doxygen_comment = doxygenTranslator->getDocumentation(n);
+      have_doxygen = (doxygen_comment && Len(doxygen_comment) > 0);
+    }
     // If there is more than one line then make docstrings like this:
     //
     //      """
@@ -1224,7 +1265,19 @@ public:
     //
     // otherwise, put it all on a single line
     //
-    if (have_auto && have_ds) {	// Both autodoc and docstring are present
+    // All comments translated from doxygen are given as raw strings (prefix "r"),
+    // because '\' is used often in comments, but may break Python module from
+    // loading. For example, in doxy comment one may write path in quotes:
+    //
+    //     This is path to file "C:\x\file.txt"
+    //
+    // Python will no load the module with such comment because of illegal
+    // escape '\x'. '\' may additionally appear in verbatim or htmlonly sections
+    // of doxygen doc, Latex expressions, ...
+      if (have_auto && have_doxygen) {	// Both autodoc and doxygen are present
+          doc = NewString("");
+          Printv(doc, triple_double, "\n", pythoncode(autodoc, indent), "\n", pythoncode(doxygen_comment, indent), indent, triple_double, NIL);
+      } else if (have_auto && have_ds) {	// Both autodoc and docstring are present
       doc = NewString("");
       Printv(doc, triple_double, "\n", pythoncode(autodoc, indent), "\n", pythoncode(str, indent), indent, triple_double, NIL);
     } else if (!have_auto && have_ds) {	// only docstring
@@ -1241,13 +1294,18 @@ public:
 	doc = NewString("");
 	Printv(doc, triple_double, "\n", pythoncode(autodoc, indent), indent, triple_double, NIL);
       }
-    } else
+    } else if (have_doxygen) { // the lowest priority
+      doc = NewString("");
+      Printv(doc, triple_double, "\n", pythoncode(doxygen_comment, indent), indent, triple_double, NIL);
+    }
+    else
       doc = NewString("");
 
     // Save the generated strings in the parse tree in case they are used later
     // by post processing tools
     Setattr(n, "python:docstring", doc);
     Setattr(n, "python:autodoc", autodoc);
+
     return doc;
   }   
 
@@ -1471,9 +1529,9 @@ public:
 	    String *str = Getattr(n, "feature:docstring");
 	    if (!str || Len(str) == 0) {
 	      if (CPlusPlus) {
-		Printf(doc, "Proxy of C++ %s class", real_classname);
+		//Printf(doc, "Proxy of C++ %s class", real_classname);
 	      } else {
-		Printf(doc, "Proxy of C %s struct", real_classname);
+		//Printf(doc, "Proxy of C %s struct", real_classname);
 	      }
 	    }
 	  }
@@ -1560,7 +1618,7 @@ public:
 	return NewString("True");
       if (Strcmp(v, "false") == 0 || Strcmp(v, "FALSE") == 0)
 	return NewString("False");
-      if (Strcmp(v, "NULL") == 0)
+      if (Strcmp(v, "NULL") == 0 || Strcmp(v, "nullptr") == 0)
 	return SwigType_ispointer(t) ? NewString("None") : NewString("0");
     }
     return 0;
@@ -1772,7 +1830,7 @@ public:
     /* Make a wrapper function to insert the code into */
     Printv(f_dest, "\ndef ", name, "(", parms, ")", returnTypeAnnotation(n), ":\n", NIL);
     if (have_docstring(n))
-      Printv(f_dest, "  ", docstring(n, AUTODOC_FUNC, tab4), "\n", NIL);
+      Printv(f_dest, "  ", docstring(n, AUTODOC_FUNC, tab2), "\n", NIL);
     if (have_pythonprepend(n))
       Printv(f_dest, pythoncode(pythonprepend(n), "  "), "\n", NIL);
     if (have_pythonappend(n)) {
@@ -2614,7 +2672,7 @@ public:
 	Printf(f->code, "}\n");
       } else {
 	Printf(f->code, "newargs = PyTuple_GetSlice(args,0,%d);\n", num_fixed_arguments);
-	Printf(f->code, "varargs = PyTuple_GetSlice(args,%d,PyTuple_Size(args)+1);\n", num_fixed_arguments);
+	Printf(f->code, "varargs = PyTuple_GetSlice(args,%d,PyTuple_Size(args));\n", num_fixed_arguments);
       }
       Printf(f->code, "resultobj = %s__varargs__(%s,newargs,varargs);\n", wname, builtin ? "self" : "NULL");
       Append(f->code, "Py_XDECREF(newargs);\n");
@@ -3398,7 +3456,7 @@ public:
     printSlot(f, getSlot(n, "feature:python:tp_dict"), "tp_dict");
     printSlot(f, getSlot(n, "feature:python:tp_descr_get"), "tp_descr_get", "descrgetfunc");
     printSlot(f, getSlot(n, "feature:python:tp_descr_set"), "tp_descr_set", "descrsetfunc");
-    Printf(f, "    (size_t)(((char*)&((SwigPyObject *) 64L)->dict) - (char*) 64L), /* tp_dictoffset */\n");
+    Printf(f, "    (Py_ssize_t)offsetof(SwigPyObject, dict), /* tp_dictoffset */\n");
     printSlot(f, tp_init, "tp_init", "initproc");
     printSlot(f, getSlot(n, "feature:python:tp_alloc"), "tp_alloc", "allocfunc");
     printSlot(f, "0", "tp_new", "newfunc");
@@ -3683,6 +3741,8 @@ public:
 	}
 
 	Printf(f_shadow, ":\n");
+
+	// write docstrings if requested
 	if (have_docstring(n)) {
 	  String *str = docstring(n, AUTODOC_CLASS, tab4);
 	  if (str && Len(str))
@@ -3725,7 +3785,7 @@ public:
     if (builtin)
       builtin_pre_decl(n);
 
-    /* Overide the shadow file so we can capture its methods */
+    /* Override the shadow file so we can capture its methods */
     f_shadow = NewString("");
 
     // Set up type check for director class constructor
@@ -3959,7 +4019,8 @@ public:
 	  if (!have_addtofunc(n)) {
 	    if (!fastproxy || olddefs) {
 	      Printv(f_shadow, tab4, "def ", symname, "(", parms, ")", returnTypeAnnotation(n), ":", NIL);
-	      Printv(f_shadow, " return ", funcCall(fullname, callParms), "\n", NIL);
+	      Printv(f_shadow, "\n", NIL);
+	      Printv(f_shadow, tab8, "return ", funcCall(fullname, callParms), "\n", NIL);
 	    }
 	  } else {
 	    Printv(f_shadow, tab4, "def ", symname, "(", parms, ")", returnTypeAnnotation(n), ":", NIL);
@@ -4283,12 +4344,56 @@ public:
     return SWIG_OK;
   }
 
+    /* -------------------
+     * findDocInParent()
+     *
+     * Search up two levels
+     * ------------------- */
+    String *findDocInGrandParent(Node *n, String *name) {
+        //Node *grandParent = Getattr(Getattr(n,"parentNode"),"parentNode");
+        //Node *grandParent = Getattr(n,"parentNode");
+        //String *grandParentName = Getattr(grandParent, "name");
+        std::cout << "Start Node; looking for: " << Char(name) << std::endl;
+        Swig_print_node(n);
+        std::cout << "End Node" << std::endl;
+
+        //std::cout << "Checking for " << Char(name) << " under Parent " << Char(grandParentName) << std::endl;
+        //String *searchname = name;
+        //if (Strcmp(Getattr(n,"storage"),"static") == 0) {
+        //    searchname = Getattr(n,"staticmembervariableHandler:name");
+        //}
+        //try {
+        //    Node *parent = firstChild(grandParent);
+        //    while (parent) {
+        //        std::cout << "Checking " << Char(Getattr(parent,"name")) << std::endl;
+        //        if (Strcmp(searchname, Getattr(parent,"name")) == 0) {
+        //            if (Getattr(parent,"doxygen")) {
+        //                return Getattr(parent,"doxygen");
+        //            }
+        //        }
+        //        parent = nextSibling(parent);
+        //    }
+        //} catch (int e) {
+        //    std::cout << "Exception number: " << e << std::endl;
+        //}
+        return 0;
+    }
+
   /* ------------------------------------------------------------
    * membervariableHandler()
    * ------------------------------------------------------------ */
 
   virtual int membervariableHandler(Node *n) {
     String *symname = Getattr(n, "sym:name");
+
+      std::cout << "MemVar: " << Char(Getattr(n,"name")) << std::endl;
+      String *docfuncname = Getattr(n,"name");
+      //String *foundDocs = findDocInGrandParent(n, docfuncname);
+      //std::cout << "Found: " << Char(foundDocs) << std::endl;
+
+      std::cout << "Start Node; looking for: " << Char(docfuncname) << std::endl;
+      Swig_print_node(n);
+      std::cout << "End Node" << std::endl;
 
     int oldshadow = shadow;
     if (shadow)
@@ -4331,6 +4436,7 @@ public:
     Language::staticmembervariableHandler(n);
     Swig_restore(n);
 
+ 
     if (GetFlag(n, "wrappedasconstant"))
       return SWIG_OK;
 
@@ -4451,12 +4557,16 @@ public:
     String *code = Getattr(n, "code");
     String *section = Getattr(n, "section");
 
-    if ((!ImportMode) && ((Cmp(section, "python") == 0) || (Cmp(section, "shadow") == 0))) {
+    if (!ImportMode && (Cmp(section, "python") == 0 || Cmp(section, "shadow") == 0)) {
       if (shadow) {
 	String *pycode = pythoncode(code, shadow_indent);
 	Printv(f_shadow, pycode, NIL);
 	Delete(pycode);
       }
+    } else if (!ImportMode && (Cmp(section, "pythonbegin") == 0)) {
+      String *pycode = pythoncode(code, "");
+      Printv(f_shadow_begin, pycode, NIL);
+      Delete(pycode);
     } else {
       Language::insertDirective(n);
     }
@@ -4724,7 +4834,7 @@ int PYTHON::classDirectorMethod(Node *n, Node *parent, String *super) {
 	  /* if necessary, cast away const since Python doesn't support it! */
 	  if (SwigType_isconst(nptype)) {
 	    nonconst = NewStringf("nc_tmp_%s", pname);
-	    String *nonconst_i = NewStringf("= const_cast<%s>(%s)", SwigType_lstr(ptype, 0), ppname);
+	    String *nonconst_i = NewStringf("= const_cast< %s >(%s)", SwigType_lstr(ptype, 0), ppname);
 	    Wrapper_add_localv(w, nonconst, SwigType_lstr(ptype, 0), nonconst, nonconst_i, NIL);
 	    Delete(nonconst_i);
 	    Swig_warning(WARN_LANG_DISCARD_CONST, input_file, line_number,

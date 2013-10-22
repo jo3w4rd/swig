@@ -140,6 +140,12 @@ int Dispatcher::emit_one(Node *n) {
   } else if (strcmp(tag, "template") == 0) {
     ret = templateDeclaration(n);
   }
+  /* ===============================================================
+   *  Doxygen Comment
+   * =============================================================== */
+  else if (strcmp(tag, "doxycomm") == 0) {
+      ret = doxygenComment(n);
+  }
 
   /* ===============================================================
    *  SWIG directives
@@ -302,6 +308,9 @@ int Dispatcher::usingDeclaration(Node *n) {
 }
 int Dispatcher::namespaceDeclaration(Node *n) {
   return defaultHandler(n);
+}
+int Dispatcher::doxygenComment(Node *n){
+    return defaultHandler(n);
 }
 
 
@@ -2897,7 +2906,20 @@ int Language::usingDeclaration(Node *n) {
   return SWIG_OK;
 }
 
+
 /* Stubs. Language modules need to implement these */
+
+/* ----------------------------------------------------------------------
+ * Language::doxygenComment()
+ * ---------------------------------------------------------------------- */
+int Language::doxygenComment(Node *n){
+
+    String *comment = Getattr(n, "comment");
+    Printf(stdout, "doxygenComment   : %s\n", comment);
+
+    return SWIG_OK;
+	
+}
 
 /* ----------------------------------------------------------------------
  * Language::constantWrapper()

@@ -321,7 +321,8 @@ extern int        ParmList_is_compactdefargs(ParmList *p);
   extern String *Swig_pcre_version(void);
   extern void Swig_init(void);
   extern int Swig_value_wrapper_mode(int mode);
-
+  extern int Swig_is_generated_overload(Node *n);
+    
   typedef enum { EMF_STANDARD, EMF_MICROSOFT } ErrorMessageFormat;
 
   extern void Swig_warning(int num, const_String_or_char_ptr filename, int line, const char *fmt, ...);

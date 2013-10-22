@@ -60,6 +60,35 @@ static int      class_level = 0;
 static Node   **class_decl = NULL;
 
 /* -----------------------------------------------------------------------------
+ *                            Doxygen Comment Globals and Assist Functions
+ * ----------------------------------------------------------------------------- */
+static String *currentDeclComment = NULL; /* Comment of C/C++ declaration. */
+static Node *previousNode = NULL; /* Pointer to the previous node (for post comments) */
+static Node *currentNode = NULL; /* Pointer to the current node (for post comments) */
+
+int isStructuralDoxygen(String *s){
+	char *slashPointer = Strchr(s, '\\');
+	char *atPointer = Strchr(s,'@');
+	if (slashPointer == NULL && atPointer == NULL) return 0;
+	else if( slashPointer == NULL) slashPointer = atPointer;
+	/* Perhaps a better solution exists... */
+	slashPointer++;
+	if (strncmp(slashPointer, "addtogroup", 10) == 0 || strncmp(slashPointer, "callgraph", 9) == 0 || strncmp(slashPointer, "callergraph", 11) == 0
+    || strncmp(slashPointer, "category", 8) == 0 || strncmp(slashPointer, "class", 5) == 0 || strncmp(slashPointer, "def", 3) == 0
+    || strncmp(slashPointer, "defgroup", 8) == 0 || strncmp(slashPointer, "dir", 3) == 0 || strncmp(slashPointer, "enum", 4) == 0
+    || strncmp(slashPointer, "example", 7) == 0 || strncmp(slashPointer, "file", 4) == 0 || strncmp(slashPointer, "fn", 2) == 0
+    || strncmp(slashPointer, "headerfile", 9) == 0 || strncmp(slashPointer, "hideinitializer", 12) == 0
+    || strncmp(slashPointer, "interface", 9) == 0 || strncmp(slashPointer, "internal", 8) == 0 || strncmp(slashPointer, "mainpage", 8) == 0
+    || strncmp(slashPointer, "name", 4) == 0 || strncmp(slashPointer, "namespace", 9) == 0 || strncmp(slashPointer, "nosubgrouping", 13) == 0
+    || strncmp(slashPointer, "overload", 8) == 0 || strncmp(slashPointer, "package", 7) == 0 || strncmp(slashPointer, "page", 4) == 0
+    || strncmp(slashPointer, "property", 8) == 0 || strncmp(slashPointer, "protocol", 8) == 0 || strncmp(slashPointer, "relates", 7) == 0
+    || strncmp(slashPointer, "relatesalso", 5) == 0 || strncmp(slashPointer, "showinitializer", 5) == 0 || strncmp(slashPointer, "struct", 5) == 0
+    || strncmp(slashPointer, "typedef", 7) == 0 || strncmp(slashPointer, "union", 5) == 0 || strncmp(slashPointer, "var", 3) == 0
+    || strncmp(slashPointer, "weakgroup", 9) == 0){ return 1;}
+	return 0;
+}
+
+/* -----------------------------------------------------------------------------
  *                            Assist Functions
  * ----------------------------------------------------------------------------- */
 
@@ -151,6 +180,36 @@ static Node *copy_node(Node *n) {
     Delete(ci);
   }
   return nn;
+}
+
+static void set_comment(Node *n, String *comment) {
+    String *name;
+    Parm *p;
+    if (!n || !comment)
+    return;
+
+    if (Getattr(n, "doxygen"))
+    Append(Getattr(n, "doxygen"), comment);
+    else {
+        Setattr(n, "doxygen", comment);
+        /* This is the first comment, populate it with @params, if any */
+        p = Getattr(n, "parms");
+        while (p) {
+            if (Getattr(p, "doxygen"))
+            Printv(comment, "\n@param ", Getattr(p, "name"), Getattr(p, "doxygen"), NIL);
+            p=nextSibling(p);
+        }
+    }
+
+    /* Append same comment to every generated overload */
+    name = Getattr(n, "name");
+    if (!name)
+    return;
+    n = nextSibling(n);
+    while (n && Getattr(n, "name") && Strcmp(Getattr(n, "name"), name) == 0) {
+        Setattr(n, "doxygen", comment);
+        n = nextSibling(n);
+    }
 }
 
 /* -----------------------------------------------------------------------------
@@ -1717,6 +1776,9 @@ static void tag_nodes(Node *n, const_String_or_char_ptr attrname, DOH *value) {
 %token <str> OPERATOR
 %token <str> COPERATOR
 %token PARSETYPE PARSEPARM PARSEPARMS
+%token <str> DOXYGENSTRING
+%token <str> DOXYGENPOSTSTRING
+%token <str> C_COMMENT_STRING
 
 %left  CAST
 %left  QUESTIONMARK
@@ -1788,7 +1850,10 @@ static void tag_nodes(Node *n, const_String_or_char_ptr attrname, DOH *value) {
 %type <ptype>    type_specifier primitive_type_list ;
 %type <node>     fname stringtype;
 %type <node>     featattr;
-
+%type <str>	 doxygen_comment;
+%type <str>	 doxygen_comment_item;
+%type <str>	 doxygen_post_comment;
+%type <str>	 doxygen_post_comment_item;
 %%
 
 /* ======================================================================
@@ -1834,16 +1899,31 @@ program        :  interface {
 
 interface      : interface declaration {  
                    /* add declaration to end of linked list (the declaration isn't always a single declaration, sometimes it is a linked list itself) */
+                   if (currentDeclComment != NULL) {
+                       set_comment($2, currentDeclComment);
+                       currentDeclComment = NULL;
+                   }
                    appendChild($1,$2);
                    $$ = $1;
-               }
-               | empty {
-                   $$ = new_node("top");
-               }
-               ;
+                }
+                | interface doxygen_comment {
+                    currentDeclComment = $2;
+                    $$ = $1;
+                }
+                | interface doxygen_post_comment {
+                    Node *node = lastChild($1);
+                    if (node) {
+                        set_comment(node, $2);
+                    }
+                    $$ = $1;
+                }
+                | empty {
+                    $$ = new_node("top");
+                }
+                ;
 
 declaration    : swig_directive { $$ = $1; }
-               | c_declaration { $$ = $1; } 
+               | c_declaration { $$ = $1; }
                | cpp_declaration { $$ = $1; }
                | SEMI { $$ = 0; }
                | error {
@@ -3441,6 +3521,59 @@ c_constructor_decl : storage_class type LPAREN parms RPAREN ctor_end {
                 }
                 ;
 
+/* ------------------------------------------------------------
+ A Doxygen Comment (a string in Doxygen Format)
+ ------------------------------------------------------------ */
+
+doxygen_comment_item : DOXYGENSTRING {
+    DohReplace($1, "/**", "", 0);
+    DohReplace($1, "/*!", "", 0);
+    DohReplace($1, "///", "", 0);
+    DohReplace($1, "//!", "", 0);
+    DohReplace($1, "*/", "", 0);
+
+    /* Throw out all structural comments */
+    if (isStructuralDoxygen($1)) {
+        Delete($1);
+        $1 = 0;
+    }
+    $$ = $1;
+}
+| doxygen_comment_item doxygen_comment_item {
+    if ($1)
+    Append($1, $2);
+    else
+    $1 = $2;
+    $$ = $1;
+}
+;
+
+doxygen_comment : doxygen_comment_item {
+    $$ = $1;
+}
+;
+
+
+doxygen_post_comment_item : DOXYGENPOSTSTRING {
+    DohReplace($1, "///<", "", 0);
+    DohReplace($1, "/**<", "", 0);
+    DohReplace($1, "/*!<", "", 0);
+    DohReplace($1, "//!<", "", 0);
+    DohReplace($1, "*/", "", 0);
+
+    $$ = $1;
+}
+| doxygen_post_comment_item doxygen_post_comment_item {
+    Append($1, $2);
+    $$ = $1;
+}
+;
+
+doxygen_post_comment : doxygen_post_comment_item {
+    $$ = $1;
+}
+;
+
 /* ======================================================================
  *                       C++ Support
  * ====================================================================== */
@@ -4423,6 +4556,14 @@ cpp_member   : c_declaration { $$ = $1; }
              | fragment_directive {$$ = $1; }
              | types_directive {$$ = $1; }
              | SEMI { $$ = 0; }
+             | doxygen_comment cpp_member {
+                 $$ = $2;
+                 set_comment($2, $1);
+             }
+             | cpp_member doxygen_post_comment {
+                 $$ = $1;
+                 set_comment($1, $2);
+             }
              ;
 
 /* Possibly a constructor */
@@ -4793,11 +4934,16 @@ rawparms          : parm ptail {
                ;
 
 ptail          : COMMA parm ptail {
-                 set_nextSibling($2,$3);
-		 $$ = $2;
+                    set_nextSibling($2,$3);
+                    $$ = $2;
                 }
-               | empty { $$ = 0; }
-               ;
+                | COMMA doxygen_post_comment parm ptail {
+                    set_comment(previousNode, $2);
+                    set_nextSibling($3,$4);
+                    $$ = $3;
+                }
+                | empty { $$ = 0; }
+                ;
 
 
 parm           : rawtype parameter_declarator {
@@ -4824,7 +4970,15 @@ parm           : rawtype parameter_declarator {
 		  Setfile($$,cparse_file);
 		  Setline($$,cparse_line);
 		}
-		;
+        | doxygen_comment parm {
+            $$ = $2;
+            set_comment($2, $1);
+        }
+        | parm doxygen_post_comment {
+            $$ = $1;
+            set_comment($1, $2);
+        }
+        ;
 
 valparms        : rawvalparms {
                  Parm *p;
@@ -5689,6 +5843,18 @@ edecl          :  ID {
 		   Setattr($$,"value",$1);
 		   Delete(type);
                  }
+                | doxygen_comment edecl {
+                    $$ = $2;
+                    set_comment($2, $1);
+                }
+                | doxygen_post_comment edecl {
+                    $$ = $2;
+                    set_comment(previousNode, $1);
+                }
+                | edecl doxygen_post_comment {
+                    $$ = $1;
+                    set_comment($1, $2);
+                }
                  | empty { $$ = 0; }
                  ;
 

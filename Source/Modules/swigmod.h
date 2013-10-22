@@ -17,6 +17,7 @@
 #include "swig.h"
 #include "preprocessor.h"
 #include "swigwarn.h"
+#include "../DoxygenTranslator/src/DoxygenTranslator.h"
 
 #if !defined(HAVE_BOOL)
 typedef int bool;
@@ -84,8 +85,10 @@ public:
   virtual int typemapcopyDirective(Node *n);
   virtual int typesDirective(Node *n);
 
-  /* C/C++ parsing */
+  /* Doxygen Comment */
+  virtual int doxygenComment(Node *n);
 
+  /* C/C++ parsing */
   virtual int cDeclaration(Node *n);
   virtual int externDeclaration(Node *n);
   virtual int enumDeclaration(Node *n);
@@ -162,6 +165,9 @@ public:
   virtual int accessDeclaration(Node *n);
   virtual int namespaceDeclaration(Node *n);
   virtual int usingDeclaration(Node *n);
+
+  /* Doxygen comment handling */
+  virtual int doxygenComment(Node *n);
 
   /* Function handlers */
 
@@ -314,6 +320,9 @@ protected:
 
   /* Director language module */
   int director_language;
+
+  // Class instance to translate comments
+  DoxygenTranslator *doxygenTranslator;
 
 private:
   Hash *symtabs; /* symbol tables */

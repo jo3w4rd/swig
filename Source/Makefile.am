@@ -12,6 +12,7 @@ AM_CPPFLAGS =	-I$(BUILD_SOURCE_DIR)/Include	\
 		-I$(BUILD_SOURCE_DIR)/CParse	\
 		-I$(SOURCE_DIR)/Include		\
 		-I$(SOURCE_DIR)/DOH		\
+		-I$(SOURCE_DIR)/DoxygenTranslator		\
 		-I$(SOURCE_DIR)/CParse		\
 		-I$(SOURCE_DIR)/Preprocessor	\
 		-I$(SOURCE_DIR)/Swig		\
@@ -88,7 +89,19 @@ eswig_SOURCES =	CParse/cscanner.c		\
 		Swig/typeobj.c			\
 		Swig/typemap.c			\
 		Swig/typesys.c			\
-		Swig/wrapfunc.c			
+		Swig/wrapfunc.c			\
+		DoxygenTranslator/src/DoxygenEntity.h \
+		DoxygenTranslator/src/DoxygenEntity.cpp \
+		DoxygenTranslator/src/DoxygenParser.h \
+		DoxygenTranslator/src/DoxygenParser.cpp \
+		DoxygenTranslator/src/DoxygenTranslator.h \
+		DoxygenTranslator/src/DoxygenTranslator.cpp \
+		DoxygenTranslator/src/JavaDocConverter.h \
+		DoxygenTranslator/src/JavaDocConverter.cpp \
+		DoxygenTranslator/src/PyDocConverter.h \
+		DoxygenTranslator/src/PyDocConverter.cpp \
+		DoxygenTranslator/src/PyDocCopier.h \
+		DoxygenTranslator/src/PyDocCopier.cpp
 
 bin_PROGRAMS = eswig
 eswig_LDADD   = @SWIGLIBS@
